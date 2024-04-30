@@ -1,12 +1,21 @@
 use std::io::{self, Read};
+use std::os::unix::io::AsRawFd;
+use termios::{Termios, tcgetattr, tcsetattr, TCSAFLUSH};
 
-fn main() -> io::Result<()> {
-    let mut c = [0; 1]; // Define a buffer to read a single byte at a time
+fn enable_raw_mode() -> Result<Termios, io::Error> {
+    let mut raw = Termios::from_fd(io::stdin().as_raw_fd())?;
+    raw.c_lflag &= !(termios::ECHO);
+    tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &raw)?;
+    Ok(raw)
+}
+
+fn main() -> Result<(), io::Error> {
+    let _raw_mode = enable_raw_mode()?;
+    let mut input = [0u8];
     loop {
-        match io::stdin().read_exact(&mut c) {
-            Ok(()) => continue, // Continue looping if exactly 1 byte is read successfully
-            Err(ref e) if e.kind() == io::ErrorKind::UnexpectedEof => break, // Break the loop if EOF is reached
-            Err(e) => return Err(e), // Propagate any other errors
+        io::stdin().read_exact(&mut input)?;
+        if input[0] == b'q' {
+            break;
         }
     }
     Ok(())

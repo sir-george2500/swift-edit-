@@ -1,7 +1,6 @@
 use std::io::{self, Read};
 use termios::{Termios, tcsetattr, TCSAFLUSH};
 use std::os::unix::io::AsRawFd;
-use std::ffi::CString;
 
 // Define a global variable to hold the original terminal attributes
 static mut ORIG_TERMIOS: Option<Termios> = None;
@@ -32,7 +31,7 @@ fn enable_raw_mode() -> Result<(), io::Error> {
     // Clone the original terminal attributes to modify them for raw mode
     let mut raw = orig_termios.clone();
     // Disable echoing of input characters
-    raw.c_lflag &= !(termios::ECHO);
+    raw.c_lflag &= !(termios::ECHO| termios::ICANON);
     // Apply the modified terminal attributes to enable raw mode
     tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &raw)?;
     Ok(())

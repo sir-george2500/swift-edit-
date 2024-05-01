@@ -1,7 +1,8 @@
 use std::io::{self, Read};
 use termios::{Termios, tcsetattr, TCSAFLUSH};
 use std::os::unix::io::AsRawFd;
-
+use libc::c_int;
+use libc::iscntrl;
 // Define a global variable to hold the original terminal attributes
 static mut ORIG_TERMIOS: Option<Termios> = None;
 
@@ -43,16 +44,27 @@ extern "C" fn disable_raw_mode_c() {
         eprintln!("Error disabling raw mode: {}", e);
     }
 }
-
 fn main() -> Result<(), io::Error> {
     let _raw_mode = enable_raw_mode()?;
+
     let mut input = [0u8];
     loop {
         io::stdin().read_exact(&mut input)?;
-        if input[0] == b'q' {
+        let c = input[0];
+
+        if c == b'q' {
             break;
         }
+        unsafe{
+
+            if iscntrl(c as c_int) != 0 {
+                println!("{} (CTRL)", c);
+            } else {
+                println!("{} ('{}')", c, c as char);
+            }
+        }
     }
+
     Ok(())
 }
 

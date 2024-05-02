@@ -32,7 +32,7 @@ fn enable_raw_mode() -> Result<(), io::Error> {
     // Clone the original terminal attributes to modify them for raw mode
     let mut raw = orig_termios.clone();
     // Disable echoing of input characters
-    raw.c_lflag &= !(termios::ECHO| termios::ICANON);
+    raw.c_lflag &= !(termios::ECHO| termios::ICANON | termios::ISIG);
     // Apply the modified terminal attributes to enable raw mode
     tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &raw)?;
     Ok(())

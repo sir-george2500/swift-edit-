@@ -1,4 +1,7 @@
 use std::io::{self, Read};
+use libc::ICRNL;
+use libc::IXON;
+use libc::OPOST;
 use termios::{Termios, tcsetattr, TCSAFLUSH};
 use std::os::unix::io::AsRawFd;
 use libc::c_int;
@@ -31,8 +34,13 @@ fn enable_raw_mode() -> Result<(), io::Error> {
     }
     // Clone the original terminal attributes to modify them for raw mode
     let mut raw = orig_termios.clone();
+    // Disable ICRNL and IXON flags
+    raw.c_iflag &= !(ICRNL|IXON);
+
+    // Disable OPOST flag
+    raw.c_oflag &= !(OPOST);
     // Disable echoing of input characters
-    raw.c_lflag &= !(termios::ECHO| termios::ICANON | termios::ISIG);
+    raw.c_lflag &= !(termios::ECHO|termios::IEXTEN | termios::ICANON | termios::ISIG);
     // Apply the modified terminal attributes to enable raw mode
     tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &raw)?;
     Ok(())
@@ -58,9 +66,9 @@ fn main() -> Result<(), io::Error> {
         unsafe{
 
             if iscntrl(c as c_int) != 0 {
-                println!("{} (CTRL)", c);
+                println!("{} (CTRL)\r\n", c);
             } else {
-                println!("{} ('{}')", c, c as char);
+                println!("{} ('{}')\r\n", c, c as char);
             }
         }
     }

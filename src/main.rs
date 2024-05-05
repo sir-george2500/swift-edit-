@@ -1,13 +1,22 @@
+/*** includes ***/
 use std::io::{self, Read};
-use libc::ICRNL;
-use libc::IXON;
-use libc::OPOST;
-use termios::{Termios, tcsetattr, TCSAFLUSH};
+use libc::{ICRNL, IXON, OPOST};
+use termios::{tcsetattr, Termios, TCSAFLUSH};
 use std::os::unix::io::AsRawFd;
 use libc::c_int;
 use libc::iscntrl;
+
+/*** data ***/
+
 // Define a global variable to hold the original terminal attributes
 static mut ORIG_TERMIOS: Option<Termios> = None;
+
+/*** terminal ***/
+// Function to print error message and exit
+fn die(s: &str) -> ! {
+    eprintln!("Error: {}", s);
+    std::process::exit(1);
+}
 
 // Function to disable raw mode
 fn disable_raw_mode() -> Result<(), io::Error> {
@@ -16,14 +25,17 @@ fn disable_raw_mode() -> Result<(), io::Error> {
         ORIG_TERMIOS.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Original terminal attributes not set"))
     }?;
     // Apply the original terminal attributes to the terminal
-    tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &orig_termios)?;
+    if tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &orig_termios).is_err() {
+        die("tcsetattr");
+    }
     Ok(())
 }
 
 // Function to enable raw mode
 fn enable_raw_mode() -> Result<(), io::Error> {
     // Get the current terminal attributes and store them in orig_termios
-    let orig_termios = Termios::from_fd(io::stdin().as_raw_fd())?;
+    let orig_termios = Termios::from_fd(io::stdin().as_raw_fd())
+        .map_err(|_| io::Error::new(io::ErrorKind::Other, "Failed to get terminal attributes"))?;
     // Save the original terminal attributes to the global variable
     unsafe {
         ORIG_TERMIOS = Some(orig_termios);
@@ -35,14 +47,19 @@ fn enable_raw_mode() -> Result<(), io::Error> {
     // Clone the original terminal attributes to modify them for raw mode
     let mut raw = orig_termios.clone();
     // Disable ICRNL and IXON flags
-    raw.c_iflag &= !(ICRNL|IXON);
-
+    raw.c_iflag &= !(ICRNL | IXON);
     // Disable OPOST flag
     raw.c_oflag &= !(OPOST);
-    // Disable echoing of input characters
-    raw.c_lflag &= !(termios::ECHO|termios::IEXTEN | termios::ICANON | termios::ISIG);
+    // Disable echoing of input characters and other miscellaneous flags
+    raw.c_lflag &= !(termios::ECHO | termios::IEXTEN | termios::ICANON | termios::ISIG);
+    raw.c_iflag &= !(termios::BRKINT | termios::ICRNL | termios::INPCK | termios::ISTRIP | termios::IXON);
+    raw.c_cflag |= termios::CS8;
+    raw.c_cc[termios::VMIN as usize] = 0;
+    raw.c_cc[termios::VTIME as usize] = 1;
     // Apply the modified terminal attributes to enable raw mode
-    tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &raw)?;
+    if tcsetattr(io::stdin().as_raw_fd(), TCSAFLUSH, &raw).is_err() {
+        die("tcsetattr");
+    }
     Ok(())
 }
 
@@ -52,24 +69,29 @@ extern "C" fn disable_raw_mode_c() {
         eprintln!("Error disabling raw mode: {}", e);
     }
 }
-fn main() -> Result<(), io::Error> {
-    let _raw_mode = enable_raw_mode()?;
 
-    let mut input = [0u8];
+/*** init ***/
+fn main() -> Result<(), io::Error> {
+    enable_raw_mode()?;
+
+    let mut input = [0u8; 1];
     loop {
-        io::stdin().read_exact(&mut input)?;
+        // Use `read` instead of `read_exact`
+        if io::stdin().read(&mut input)? == 0 {
+            // Exit the loop if no bytes are read (EOF reached)
+            break;
+        }
         let c = input[0];
 
         if c == b'q' {
             break;
         }
-        unsafe{
 
-            if iscntrl(c as c_int) != 0 {
-                println!("{} (CTRL)\r\n", c);
-            } else {
-                println!("{} ('{}')\r\n", c, c as char);
-            }
+        // Use unsafe to call the C function iscntrl
+        if unsafe { iscntrl(c as c_int) } != 0 {
+            println!("{} (CTRL)\r\n", c);
+        } else {
+            println!("{} ('{}')\r\n", c, c as char);
         }
     }
 
